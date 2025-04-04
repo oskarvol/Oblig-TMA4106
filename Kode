@@ -1,0 +1,97 @@
+#include <Servo.h>
+
+// Pin definitions
+const int trigPin = 9;
+const int echoPin = 10;
+const int escPin = 6;
+
+// Variables for HC-SR04
+long duration;
+int distance;
+
+// PID variables
+double input, output, setpoint;
+double Kp = 2.5, Ki = 0.70, Kd = 2.0;
+double integral = 0;
+double lastError = 0;
+double outputLimitMin = 0;
+double outputLimitMax = 85;
+
+Servo myservo;
+
+void setup() {
+    Serial.begin(9600);
+    myservo.attach(escPin);
+    
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+
+    setpoint = 20; // Referanseverdi
+    integral = 0;  // Initialiser integral
+    lastError = 0; // Initialiser siste feil
+    Serial.println("Start");
+}
+
+void loop() {
+  
+      // Leser distanse fra HC-SR04
+      distance = readDistance();
+
+      // Printer distanse
+      Serial.print("Distance: ");
+      Serial.print(distance);
+      Serial.print(" cm     ");
+
+      // Compute the PID output
+      if (distance < 50){ // Sikkerhet for potensielle feilmålinger 
+        output = Compute(distance - setpoint); // Kaller PID-regulatoren med avviket
+      }
+      else {
+        output = 0;
+      }
+      // Printer outputverdien 
+      Serial.print("   Output: ");
+      Serial.println(output);
+
+      // Sender Output til servoen
+      myservo.write(constrain(output, 0, 180)); // Constrain sørger for at servoen får riktig intervall
+
+      // Lite delay for hurtig regulering
+      delay(50);
+  
+}
+
+// Funksjon for å lese distanse fra HC-SR04
+long readDistance() {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+
+    duration = pulseIn(echoPin, HIGH);
+
+    long dist = duration * 0.0344 / 2;
+    return dist;
+}
+
+// Funksjon for PID-regulator
+double Compute(double e) {
+      integral += (Ki * e);
+
+      double derivative = e - lastError;
+
+      double output = (Kp * e + integral + Kd * derivative);
+
+      if (output > outputLimitMax) {
+          output = outputLimitMax;
+          integral -= (Ki * e); // Anti-windup
+      } else if (output < outputLimitMin) {
+          output = outputLimitMin;
+          integral -= (Ki * e); // Anti-windup
+      }
+
+      lastError = e;
+    
+    return output; 
+}
